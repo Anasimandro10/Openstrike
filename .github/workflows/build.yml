@@ -35,7 +35,7 @@ jobs:
           rm SDL2-mingw.tar.gz
 
       - name: Build Linux x64
-        run: zig build -Dtarget=x86_64-linux-gnu -Doptimize=ReleaseFast
+        run: zig build -Doptimize=ReleaseFast
 
       - name: Copiar binario Linux
         run: |
