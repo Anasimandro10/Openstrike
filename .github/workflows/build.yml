@@ -23,7 +23,9 @@ jobs:
           key: zig-cache-${{ hashFiles('build.zig') }}
 
       - name: Instalar SDL2 (Linux)
-        run: sudo apt-get install -y libsdl2-dev libgl1-mesa-dev
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --fix-missing libsdl2-dev libgl1-mesa-dev
 
       - name: Descargar SDL2 MinGW (Windows)
         run: |
