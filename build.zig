@@ -1,36 +1,30 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
-    const target   = b.standardTargetOptions(.{});
+    const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
     const exe = b.addExecutable(.{
         .name = "openstrike",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
-            .target           = target,
-            .optimize         = optimize,
+            .target = target,
+            .optimize = optimize,
         }),
     });
 
     exe.linkLibC();
 
-    const isWindows = target.result.os.tag == .windows;
+    const is_windows = target.result.os.tag == .windows;
 
-    if (isWindows) {
+    if (is_windows) {
+        // SDL2 MinGW vendored — deps/windows/SDL2/
         exe.addIncludePath(b.path("deps/windows/SDL2/x86_64-w64-mingw32/include"));
         exe.addLibraryPath(b.path("deps/windows/SDL2/x86_64-w64-mingw32/lib"));
         exe.linkSystemLibrary("SDL2");
         exe.linkSystemLibrary("opengl32");
-        // Librerías del sistema de Windows que SDL2 necesita internamente
-        exe.linkSystemLibrary("gdi32");      // GDI — ventanas, píxeles, fuentes
-        exe.linkSystemLibrary("winmm");      // Multimedia timer
-        exe.linkSystemLibrary("ole32");      // COM — CoInitialize, CoCreateInstance
-        exe.linkSystemLibrary("oleaut32");   // OLE Automation — SysFreeString
-        exe.linkSystemLibrary("imm32");      // Input Method Manager — IME
-        exe.linkSystemLibrary("setupapi");   // HID/joystick device enumeration
-        exe.linkSystemLibrary("version");    // GetFileVersionInfo — IME detection
-        exe.linkSystemLibrary("cfgmgr32");   // CM_Locate_DevNode — gamepad support
+        exe.linkSystemLibrary("ws2_32"); // ENet — para Sistema 11
+        exe.linkSystemLibrary("winmm");  // ENet — para Sistema 11
     } else {
         exe.linkSystemLibrary("SDL2");
         exe.linkSystemLibrary("GL");
