@@ -1,0 +1,72 @@
+name: Build OpenStrike
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v1
+        with:
+          version: 0.14.0
+
+      - name: Cache zig build
+        uses: actions/cache@v4
+        with:
+          path: .zig-cache
+          key: zig-linux-${{ hashFiles('build.zig') }}-${{ github.sha }}
+          restore-keys: zig-linux-${{ hashFiles('build.zig') }}-
+
+      - name: Instalar SDL2
+        run: sudo apt-get install -y libsdl2-dev
+
+      - name: Verificar formato
+        run: zig fmt --check src/
+
+      - name: Build Linux x64
+        run: zig build -Dtarget=x86_64-linux-gnu -Doptimize=ReleaseFast
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openstrike-linux-x64
+          path: zig-out/bin/openstrike
+
+  build-windows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v1
+        with:
+          version: 0.14.0
+
+      - name: Cache zig build
+        uses: actions/cache@v4
+        with:
+          path: .zig-cache
+          key: zig-windows-${{ hashFiles('build.zig') }}-${{ github.sha }}
+          restore-keys: zig-windows-${{ hashFiles('build.zig') }}-
+
+      - name: Descargar SDL2 MinGW para Windows
+        run: |
+          mkdir -p deps/windows/SDL2
+          curl -L https://github.com/libsdl-org/SDL/releases/download/release-2.28.5/SDL2-devel-2.28.5-mingw.tar.gz -o SDL2-mingw.tar.gz
+          tar -xzf SDL2-mingw.tar.gz -C deps/windows/SDL2 --strip-components=1
+          rm SDL2-mingw.tar.gz
+
+      - name: Build Windows x64
+        run: zig build -Dtarget=x86_64-windows-gnu -Doptimize=ReleaseFast
+
+      - name: Copiar SDL2.dll al output
+        run: cp deps/windows/SDL2/x86_64-w64-mingw32/bin/SDL2.dll zig-out/bin/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openstrike-windows-x64
+          path: zig-out/bin/
