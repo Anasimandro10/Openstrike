@@ -27,6 +27,11 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y --fix-missing libsdl2-dev libgl1-mesa-dev
 
+      - name: Descargar stb_image.h
+        run: |
+          curl -L https://raw.githubusercontent.com/nothings/stb/master/stb_image.h \
+               -o csrc/stb_image.h
+
       - name: Descargar SDL2 MinGW (Windows)
         run: |
           mkdir -p deps/windows/SDL2
