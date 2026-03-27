@@ -14,26 +14,18 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-/* SDL_MAIN_HANDLED: usamos nuestro propio main() en todas las plataformas.
-   Sin esto, SDL.h redefine main como SDL_main en Windows y necesitariamos
-   enlazar SDL2main. Con esto mantenemos int main() limpio. */
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
 #include <stdio.h>
-#include <stdbool.h>
-#include <stdint.h>
 
-/* ---- Tipos basicos ---------------------------------------------------- */
-
-typedef uint64_t u64;
-typedef float    f32;
-typedef double   f64;
+#include "types.h"
+#include "renderer/renderer.h"
 
 /* ---- Constantes -------------------------------------------------------- */
 
 #define TICK_RATE    64
-#define TICK_MS      (1000.0 / TICK_RATE)   /* 15.625ms por tick */
+#define TICK_MS      (1000.0 / TICK_RATE)
 #define SENSIBILIDAD 0.15f
 #define PITCH_MAX    89.0f
 
@@ -78,7 +70,6 @@ int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
-    /* Necesario con SDL_MAIN_HANDLED para que SDL_Init no falle */
     SDL_SetMainReady();
 
     if (!init()) {
@@ -96,7 +87,6 @@ int main(int argc, char *argv[]) {
         f64 frame_ms = (f64)(now - last_time);
         last_time    = now;
 
-        /* Clamp: evita spiral of death si el frame tarda mas de 250ms */
         if (frame_ms > 250.0) {
             frame_ms = 250.0;
         }
@@ -125,7 +115,6 @@ static int init(void) {
         return 0;
     }
 
-    /* Atributos OpenGL ANTES de crear la ventana */
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -152,19 +141,27 @@ static int init(void) {
         return 0;
     }
 
-    SDL_GL_SetSwapInterval(1); /* VSync */
+    SDL_GL_SetSwapInterval(1);
 
+    /* Setup GL basico (funciones OpenGL 1.x, sin cargar extensiones) */
     glViewport(0, 0, 1280, 720);
     glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
 
-    /* Modo FPS: capturar y ocultar cursor */
+    /* Inicializar renderer (carga extensiones GL, compila shaders, sube VBO) */
+    if (!renderer_init()) {
+        SDL_GL_DeleteContext(g_gl_ctx);
+        SDL_DestroyWindow(g_window);
+        SDL_Quit();
+        return 0;
+    }
+
     SDL_SetRelativeMouseMode(SDL_TRUE);
 
-    fprintf(stdout, "OpenStrike iniciado -- 1280x720 OpenGL 2.1 64Hz\n");
-    fprintf(stdout, "WASD = mover | raton = mirar | ESC = salir\n");
+    fprintf(stdout, "OpenStrike iniciado: 1280x720 OpenGL 2.1 64Hz\n");
+    fprintf(stdout, "WASD = girar camara | raton = mirar | ESC = salir\n");
 
     return 1;
 }
@@ -172,11 +169,12 @@ static int init(void) {
 /* ---- shutdown ---------------------------------------------------------- */
 
 static void shutdown(void) {
+    renderer_shutdown();
     SDL_SetRelativeMouseMode(SDL_FALSE);
     SDL_GL_DeleteContext(g_gl_ctx);
     SDL_DestroyWindow(g_window);
     SDL_Quit();
-    fprintf(stdout, "OpenStrike cerrado limpiamente.\n");
+    fprintf(stdout, "OpenStrike cerrado.\n");
 }
 
 /* ---- process_events ---------------------------------------------------- */
@@ -202,7 +200,6 @@ static void process_events(void) {
         }
     }
 
-    /* Polling de teclado — mas eficiente que eventos para movimiento continuo */
     const Uint8 *teclas = SDL_GetKeyboardState(NULL);
     g_input.adelante  = teclas[SDL_SCANCODE_W]      != 0;
     g_input.atras     = teclas[SDL_SCANCODE_S]      != 0;
@@ -218,20 +215,20 @@ static void process_events(void) {
 static void update(f32 dt) {
     (void)dt;
 
-    /* Actualizar camara con delta de raton acumulado en este tick */
+    /* Actualizar angulos de la camara con el raton */
     g_camara.yaw   += g_input.mouse_dx * SENSIBILIDAD;
-    g_camara.pitch -= g_input.mouse_dy * SENSIBILIDAD; /* invertido: arriba = negativo */
+    g_camara.pitch -= g_input.mouse_dy * SENSIBILIDAD;
 
     if (g_camara.pitch >  PITCH_MAX) { g_camara.pitch =  PITCH_MAX; }
     if (g_camara.pitch < -PITCH_MAX) { g_camara.pitch = -PITCH_MAX; }
 
-    /* TODO Sistema 3: pasar g_input a pmove */
+    /* Posicion fija en (0, 64, 0) hasta Sistema 3 (pmove).
+       Sistema 3 pasara aqui pm.origin[] en lugar de (0,64,0). */
+    renderer_set_camera(0.0f, 64.0f, 0.0f, g_camara.yaw, g_camara.pitch);
 }
 
 /* ---- render ------------------------------------------------------------ */
 
 static void render(f32 alpha) {
-    (void)alpha;
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    /* TODO Sistema 2: dibujar geometria del mapa */
+    renderer_draw_frame(alpha);
 }
