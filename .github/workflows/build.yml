@@ -17,12 +17,12 @@ jobs:
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build
+      - name: Copiar assets
+        run: cp -r assets build/assets
       - uses: actions/upload-artifact@v4
         with:
           name: openstrike-linux-x64
-          path: |
-            build/openstrike
-            assets/
+          path: build/
   windows:
     runs-on: ubuntu-latest
     steps:
@@ -37,23 +37,11 @@ jobs:
         run: |
           cmake -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake -DCMAKE_BUILD_TYPE=Release
           cmake --build build-win
-      - name: Copiar SDL2.dll
-        run: cp deps/windows/SDL2/x86_64-w64-mingw32/bin/SDL2.dll build-win/
+      - name: Copiar SDL2.dll y assets
+        run: |
+          cp deps/windows/SDL2/x86_64-w64-mingw32/bin/SDL2.dll build-win/
+          cp -r assets build-win/assets
       - uses: actions/upload-artifact@v4
         with:
           name: openstrike-windows-x64
-          path: |
-            build-win/openstrike.exe
-            build-win/SDL2.dll
-            assets/
-```
-
-El zip descargado tendrá esta estructura:
-```
-openstrike-windows-x64.zip
-├── openstrike.exe
-├── SDL2.dll
-└── assets/
-    └── shaders/
-        ├── world.vert
-        └── world.frag
+          path: build-win/
