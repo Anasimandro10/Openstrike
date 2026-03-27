@@ -11,59 +11,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Zig 0.14.0
-        uses: mlugg/setup-zig@v1
-        with:
-          version: 0.14.0
-
-      - name: Cache zig build
-        uses: actions/cache@v4
-        with:
-          path: .zig-cache
-          key: zig-cache-${{ hashFiles('build.zig') }}
-
-      - name: Instalar SDL2 (Linux)
+      - name: Instalar dependencias Linux
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y --fix-missing libsdl2-dev libgl1-mesa-dev
+          sudo apt-get update -y --fix-missing
+          sudo apt-get install -y libsdl2-dev libgl-dev mingw-w64
 
       - name: Descargar stb_image.h
         run: |
           curl -L https://raw.githubusercontent.com/nothings/stb/master/stb_image.h \
                -o csrc/stb_image.h
 
-      - name: Descargar SDL2 MinGW (Windows)
-        run: |
-          mkdir -p deps/windows/SDL2
-          curl -L https://libsdl.org/release/SDL2-devel-2.28.5-mingw.tar.gz -o SDL2-mingw.tar.gz
-          tar -xzf SDL2-mingw.tar.gz -C deps/windows/SDL2 --strip-components=1
-          rm SDL2-mingw.tar.gz
+      - name: Cache build
+        uses: actions/cache@v4
+        with:
+          path: |
+            build
+            build-win
+          key: cmake-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Build Linux x64
-        run: zig build -Doptimize=ReleaseFast
-
-      - name: Copiar binario Linux
         run: |
-          mkdir -p artifacts/linux
-          cp zig-out/bin/openstrike artifacts/linux/
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
 
       - name: Build Windows x64
-        run: zig build -Dtarget=x86_64-windows-gnu -Doptimize=ReleaseFast
-
-      - name: Copiar binario Windows + DLL
         run: |
-          mkdir -p artifacts/windows
-          cp zig-out/bin/openstrike.exe artifacts/windows/
-          cp deps/windows/SDL2/x86_64-w64-mingw32/bin/SDL2.dll artifacts/windows/
+          cmake -B build-win \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-win
 
-      - name: Upload Linux
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: openstrike-linux-x64
-          path: artifacts/linux/
-
-      - name: Upload Windows
-        uses: actions/upload-artifact@v4
-        with:
-          name: openstrike-windows-x64
-          path: artifacts/windows/
+          name: openstrike-builds
+          path: |
+            build/openstrike
+            build-win/openstrike.exe
