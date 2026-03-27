@@ -139,8 +139,9 @@ fn compilarShader(src: []const u8, tipo: c.GLenum) !c.GLuint {
     }
 
     const ptr: [*c]const u8 = src.ptr;
-    const len: c.GLint = @intCast(src.len);
-    glShaderSource(shader, 1, @as([*]const [*c]const u8, @ptrCast(&ptr)), &len);
+    const ptrs = [1][*c]const u8{ptr};
+    const lens = [1]c.GLint{@intCast(src.len)};
+    glShaderSource(shader, 1, &ptrs, &lens);
     glCompileShader(shader);
 
     var status: c.GLint = 0;
