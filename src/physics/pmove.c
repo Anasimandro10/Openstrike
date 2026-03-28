@@ -13,20 +13,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#include "physics/pmove.h"
+
 #include <math.h>
 #include <string.h>
+#include "pmove.h"
 
-void phys_player_init(PhysPlayer *p, Vec3 spawn_pos) {
-    memset(p, 0, sizeof(*p));
-    p->pos = spawn_pos;
-}
+/* ------------------------------------------------------------------ */
+/* Funciones internas                                                  */
+/* ------------------------------------------------------------------ */
 
-f32 phys_view_height(const PhysPlayer *p) {
-    return p->agachado ? VIEW_HEIGHT_DUCK : VIEW_HEIGHT_STAND;
-}
-
-/* ── Fricción en suelo ───────────────────────────────────────────────────── */
 static void aplicar_friccion(PhysPlayer *p, f32 dt) {
     f32 speed = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
     if (speed < 0.1f) {
@@ -43,23 +38,33 @@ static void aplicar_friccion(PhysPlayer *p, f32 dt) {
     p->vel.z *= factor;
 }
 
-/* ── Aceleración genérica (suelo y aire) ────────────────────────────────── */
 static void acelerar(PhysPlayer *p, Vec3 wish_dir,
                      f32 wish_speed, f32 accel, f32 dt) {
-    f32 current     = vec3_dot(p->vel, wish_dir);
-    f32 add_speed   = wish_speed - current;
-    if (add_speed <= 0.0f) { return; }
+    f32 current = vec3_dot(p->vel, wish_dir);
+    f32 add     = wish_speed - current;
+    if (add <= 0.0f) { return; }
     f32 accel_speed = accel * wish_speed * dt;
-    if (accel_speed > add_speed) { accel_speed = add_speed; }
+    if (accel_speed > add) { accel_speed = add; }
     p->vel = vec3_add(p->vel, vec3_scale(wish_dir, accel_speed));
 }
 
-/* ── Tick principal de física — llamar a exactamente 64 Hz ─────────────── */
+/* ------------------------------------------------------------------ */
+/* API publica                                                         */
+/* ------------------------------------------------------------------ */
+
+void phys_player_init(PhysPlayer *p, Vec3 spawn_pos) {
+    memset(p, 0, sizeof(*p));
+    p->pos = spawn_pos;
+}
+
 void phys_tick(PhysPlayer *p, PhysInput input, f32 dt) {
     p->agachado  = input.agacharse;
     p->caminando = input.caminar;
 
+    bool hay_wish = vec3_len(input.wish_dir) > 0.001f;
+
     if (p->en_suelo) {
+
         aplicar_friccion(p, dt);
 
         if (input.saltar) {
@@ -67,32 +72,46 @@ void phys_tick(PhysPlayer *p, PhysInput input, f32 dt) {
             p->en_suelo = false;
         }
 
-        if (vec3_len(input.wish_dir) > 0.001f) {
+        if (hay_wish) {
             f32 wish_speed = p->agachado  ? SPEED_DUCK :
                              p->caminando ? SPEED_WALK :
                                             SPEED_RUN;
             acelerar(p, input.wish_dir, wish_speed, SV_ACCELERATE, dt);
         }
+
     } else {
+
         /* Gravedad */
         p->vel.y -= SV_GRAVITY * dt;
         if (p->vel.y < -SV_MAXVELOCITY) { p->vel.y = -SV_MAXVELOCITY; }
 
-        /* Air strafing — bunny hop CS 1.6 puro, sin cap de velocidad */
-        if (vec3_len(input.wish_dir) > 0.001f) {
+        /* Aceleracion lateral en aire — air strafing estilo CS 1.6 */
+        if (hay_wish) {
             acelerar(p, input.wish_dir, SPEED_RUN, SV_AIRACCELERATE, dt);
+        }
+
+        /* Cap de velocidad horizontal.
+           Tras un salto con buen timing se mantiene ~320 u/s.
+           Sin tecnica correcta la velocidad vuelve a 250 por friccion al aterrizar. */
+        f32 xz = sqrtf(p->vel.x * p->vel.x + p->vel.z * p->vel.z);
+        if (xz > BHOP_MAX_SPEED) {
+            f32 factor = BHOP_MAX_SPEED / xz;
+            p->vel.x *= factor;
+            p->vel.z *= factor;
         }
     }
 
-    /* Integrar posición */
+    /* Integrar posicion */
     p->pos = vec3_add(p->pos, vec3_scale(p->vel, dt));
 
-    /* Suelo temporal a y=0 — Sistema 4 reemplaza con swept AABB real */
+    /* Colision temporal con suelo — Sistema 4 reemplazara con swept AABB */
     if (p->pos.y <= 0.0f) {
         p->pos.y    = 0.0f;
-        if (p->vel.y < 0.0f) { p->vel.y = 0.0f; }
+        p->vel.y    = 0.0f;
         p->en_suelo = true;
-    } else {
-        p->en_suelo = false;
     }
+}
+
+f32 phys_view_height(const PhysPlayer *p) {
+    return p->agachado ? VIEW_HEIGHT_DUCK : VIEW_HEIGHT_STAND;
 }
