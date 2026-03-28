@@ -17,25 +17,26 @@
 #ifndef OPENSTRIKE_RENDERER_H
 #define OPENSTRIKE_RENDERER_H
 
-#include "math.h"
+#include "map/map.h"   /* MapVertex tiene layout identico al Vertex interno */
 
-/* Inicializar renderer: cargar GL, compilar shaders, subir geometria y textura.
-   Llamar despues de SDL_GL_CreateContext y el setup basico de GL en main.c.
-   Devuelve 1 en exito, 0 en fallo. */
+/* Inicializa GL, compila shaders, crea textura checkerboard.
+   NO crea el VBO — llamar renderer_cargar_mapa() despues.
+   Retorna 1 OK, 0 fallo. Ejecutar desde raiz del repo. */
 int  renderer_init(void);
 
-/* Liberar todos los recursos GL del renderer. */
+/* Sube la geometria del mapa al VBO. Crea el VBO si no existe.
+   Retorna 1 OK, 0 fallo.
+   DEBE llamarse despues de renderer_init() y de map_cargar(). */
+int  renderer_cargar_mapa(const Map *map);
+
+/* Libera VBO, shader y textura. */
 void renderer_shutdown(void);
 
-/* Fijar la camara para el siguiente frame.
-   x,y,z  -> posicion en unidades Hammer.
-   yaw    -> giro horizontal en grados (0 = mirando -Z).
-   pitch  -> inclinacion vertical en grados (+90 = arriba, -90 = abajo). */
+/* Guarda posicion y angulos para el siguiente draw. */
 void renderer_set_camera(float x, float y, float z, float yaw, float pitch);
 
-/* Dibujar el frame completo (incluye glClear).
-   alpha: fraccion del tick actual para interpolacion (0.0 - 1.0).
-          Reservado para Sistema 3+; de momento se ignora. */
+/* glClear + calcula view matrix + dibuja el mapa.
+   alpha reservado para interpolacion futura. */
 void renderer_draw_frame(float alpha);
 
 #endif /* OPENSTRIKE_RENDERER_H */
