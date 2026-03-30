@@ -21,10 +21,10 @@
 /* ── constantes internas ─────────────────────────────────────────────────── */
 
 /* Offset del origen del rayo sobre los pies del jugador (evita self-hit) */
-#define RAY_ORIG_OFFSET   1.0f
+#define RAY_ORIG_OFFSET   36.0f
 
 /* Distancia máxima de búsqueda = SV_STEPSIZE (18) + margen de 2 unidades */
-#define SUELO_MAX_DIST   20.0f
+#define SUELO_MAX_DIST   72.0f
 
 /* ── Möller–Trumbore: intersección rayo–triángulo ────────────────────────── *
  * Retorna true si el rayo (orig, dir) intersecta el triángulo (v0,v1,v2).    *
