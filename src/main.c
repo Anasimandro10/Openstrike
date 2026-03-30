@@ -18,15 +18,19 @@
 #include <SDL2/SDL_opengl.h>
 #include <math.h>
 #include <stdio.h>
-
 #include "types.h"
-#include "renderer/renderer.h"   /* ya incluye map/map.h */
-#include "physics/pmove.h"
+#include "renderer/renderer.h"
+#include "physics/pmove.h"     /* trae collision.h -> map.h transitivamente */
+#include "map/map.h"
+#include "map/map_zones.h"
 
-#define TICK_RATE    64
-#define TICK_MS      (1000.0 / TICK_RATE)   /* 15.625 ms por tick */
-#define SENSIBILIDAD 0.15f
-#define PITCH_MAX    89.0f
+/* ── Constantes ───────────────────────────────────────────────────────────── */
+#define TICK_RATE   64
+#define TICK_MS     (1000.0 / TICK_RATE)   /* 15.625 ms */
+#define SENSIBILIDAD  0.15f
+#define PITCH_MAX     89.0f
+
+/* ── Structs locales ──────────────────────────────────────────────────────── */
 
 typedef struct {
     bool adelante, atras, izquierda, derecha;
@@ -39,22 +43,23 @@ typedef struct {
     f32 pitch;  /* grados, +90 = arriba, -90 = abajo */
 } Camera;
 
-static SDL_Window   *g_window           = NULL;
-static SDL_GLContext g_gl_ctx           = NULL;
-static bool          g_running          = false;
-static InputState    g_input            = {0};
-static Camera        g_camara           = {0};
+/* ── Variables globales ───────────────────────────────────────────────────── */
+
+static SDL_Window   *g_window  = NULL;
+static SDL_GLContext g_gl_ctx  = NULL;
+static bool          g_running = false;
+static InputState    g_input   = {0};
+static Camera        g_camara  = {0};
 static PhysPlayer    g_player;
-static bool          g_espacio_anterior = false;
+static Map           g_map;                     /* ~2.3 MB en BSS             */
+static bool          g_espacio_anterior = false; /* flanco de subida de SPACE */
 
-/* ~2.3 MB en BSS — NUNCA declarar como variable local de funcion */
-static Map g_map;
+/* ── Funciones ────────────────────────────────────────────────────────────── */
 
-/* ── Inicializacion ────────────────────────────────────────────────── */
-
-static int init(void) {
+static int init(void)
+{
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
-        fprintf(stderr, "SDL_Init error: %s\n", SDL_GetError());
+        fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 0;
     }
 
@@ -70,13 +75,13 @@ static int init(void) {
         SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN
     );
     if (!g_window) {
-        fprintf(stderr, "SDL_CreateWindow error: %s\n", SDL_GetError());
+        fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
         return 0;
     }
 
     g_gl_ctx = SDL_GL_CreateContext(g_window);
     if (!g_gl_ctx) {
-        fprintf(stderr, "SDL_GL_CreateContext error: %s\n", SDL_GetError());
+        fprintf(stderr, "SDL_GL_CreateContext: %s\n", SDL_GetError());
         return 0;
     }
 
@@ -88,80 +93,69 @@ static int init(void) {
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
 
-    /* renderer_init primero: carga GL y shaders pero NO sube geometria */
     if (!renderer_init()) {
-        fprintf(stderr, "init: renderer_init fallo\n");
+        fprintf(stderr, "renderer_init failed\n");
         return 0;
     }
 
-    /* Cargar mapa desde JSON */
     if (!map_cargar(&g_map, "assets/maps/sala_prueba.json")) {
-        fprintf(stderr, "init: map_cargar fallo\n");
+        fprintf(stderr, "map_cargar failed\n");
         return 0;
     }
 
-    /* Subir geometria del mapa al VBO */
     if (!renderer_cargar_mapa(&g_map)) {
-        fprintf(stderr, "init: renderer_cargar_mapa fallo\n");
+        fprintf(stderr, "renderer_cargar_mapa failed\n");
         return 0;
     }
 
-    /* Fisica */
-    phys_player_init(&g_player, (Vec3){0.0f, 0.0f, 0.0f});
+    phys_player_init(&g_player, (Vec3){ 0.0f, 0.0f, 0.0f });
     g_player.en_suelo = true;
 
     SDL_SetRelativeMouseMode(SDL_TRUE);
+
     g_running = true;
     return 1;
 }
 
-static void shutdown_game(void) {
-    map_liberar(&g_map);
-    renderer_shutdown();
-    if (g_gl_ctx) { SDL_GL_DeleteContext(g_gl_ctx); g_gl_ctx = NULL; }
-    if (g_window) { SDL_DestroyWindow(g_window);    g_window = NULL; }
-    SDL_Quit();
-}
-
-/* ── Game loop ─────────────────────────────────────────────────────── */
-
-static void process_events(void) {
-    SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-        switch (event.type) {
+static void process_events(void)
+{
+    SDL_Event ev;
+    while (SDL_PollEvent(&ev)) {
+        switch (ev.type) {
             case SDL_QUIT:
                 g_running = false;
                 break;
             case SDL_KEYDOWN:
-                if (event.key.keysym.sym == SDLK_ESCAPE) {
+                if (ev.key.keysym.sym == SDLK_ESCAPE) {
                     g_running = false;
                 }
                 break;
             case SDL_MOUSEMOTION:
-                g_input.mouse_dx += (f32)event.motion.xrel;
-                g_input.mouse_dy += (f32)event.motion.yrel;
+                g_input.mouse_dx += (f32)ev.motion.xrel;
+                g_input.mouse_dy += (f32)ev.motion.yrel;
                 break;
             default:
                 break;
         }
     }
 
-    const Uint8 *teclas = SDL_GetKeyboardState(NULL);
-    g_input.adelante  = (bool)teclas[SDL_SCANCODE_W];
-    g_input.atras     = (bool)teclas[SDL_SCANCODE_S];
-    g_input.izquierda = (bool)teclas[SDL_SCANCODE_A];
-    g_input.derecha   = (bool)teclas[SDL_SCANCODE_D];
-    g_input.agacharse = (bool)teclas[SDL_SCANCODE_LCTRL];
-    g_input.caminar   = (bool)teclas[SDL_SCANCODE_LSHIFT];
+    const Uint8 *keys = SDL_GetKeyboardState(NULL);
+    g_input.adelante  = (bool)keys[SDL_SCANCODE_W];
+    g_input.atras     = (bool)keys[SDL_SCANCODE_S];
+    g_input.izquierda = (bool)keys[SDL_SCANCODE_A];
+    g_input.derecha   = (bool)keys[SDL_SCANCODE_D];
+    g_input.agacharse = (bool)keys[SDL_SCANCODE_LCTRL];
+    g_input.caminar   = (bool)keys[SDL_SCANCODE_LSHIFT];
 
-    /* Flanco de subida de SPACE — saltar solo al pulsar, no al mantener */
-    bool espacio_ahora  = (bool)teclas[SDL_SCANCODE_SPACE];
+    /* Flanco de subida de SPACE: saltar solo en el tick que se pulsa */
+    bool espacio_ahora  = (bool)keys[SDL_SCANCODE_SPACE];
     g_input.saltar      = espacio_ahora && !g_espacio_anterior;
     g_espacio_anterior  = espacio_ahora;
 }
 
-static void update(f32 dt) {
-    /* Raton → camara */
+static void update(f32 dt)
+{
+    /* Cámara */
     g_camara.yaw   += g_input.mouse_dx * SENSIBILIDAD;
     g_camara.pitch -= g_input.mouse_dy * SENSIBILIDAD;
     if (g_camara.pitch >  PITCH_MAX) { g_camara.pitch =  PITCH_MAX; }
@@ -169,64 +163,61 @@ static void update(f32 dt) {
     g_input.mouse_dx = 0.0f;
     g_input.mouse_dy = 0.0f;
 
-    /* Calcular wish_dir desde yaw y teclas WASD en plano XZ */
+    /* Dirección deseada en el plano XZ (yaw=0 → -Z) */
     f32  yaw_rad = g_camara.yaw * (3.14159265f / 180.0f);
     Vec3 forward = { sinf(yaw_rad), 0.0f, -cosf(yaw_rad) };
     Vec3 right   = { cosf(yaw_rad), 0.0f,  sinf(yaw_rad) };
-    Vec3 wish    = {0.0f, 0.0f, 0.0f};
 
+    Vec3 wish = { 0.0f, 0.0f, 0.0f };
     if (g_input.adelante)  { wish = vec3_add(wish, forward); }
     if (g_input.atras)     { wish = vec3_sub(wish, forward); }
-    if (g_input.derecha)   { wish = vec3_add(wish, right); }
-    if (g_input.izquierda) { wish = vec3_sub(wish, right); }
+    if (g_input.derecha)   { wish = vec3_add(wish, right);   }
+    if (g_input.izquierda) { wish = vec3_sub(wish, right);   }
 
-    PhysInput phys_input = {0};
-    if (vec3_len(wish) > 0.001f) {
-        phys_input.wish_dir = vec3_norm(wish);
-    }
+    f32 wish_len = vec3_len(wish);
+    if (wish_len > 0.001f) { wish = vec3_scale(wish, 1.0f / wish_len); }
+
+    PhysInput phys_input;
+    phys_input.wish_dir  = wish;
     phys_input.saltar    = g_input.saltar;
     phys_input.agacharse = g_input.agacharse;
     phys_input.caminar   = g_input.caminar;
 
-    phys_tick(&g_player, phys_input, dt);
+    /* Tick de física con detección de suelo real */
+    phys_tick(&g_player, phys_input, &g_map, dt);
 
-    /* Resetear saltar tras el tick para evitar doble-salto en frames lentos */
+    /* Consumo del salto — evita doble salto si el accumulator hace 2 ticks */
     g_input.saltar = false;
 
-    /* Pasar posicion y camara al renderer */
+    /* Posición de la cámara */
     f32 view_y = g_player.pos.y + phys_view_height(&g_player);
     renderer_set_camera(g_player.pos.x, view_y, g_player.pos.z,
                         g_camara.yaw, g_camara.pitch);
 }
 
-static void render(f32 alpha) {
+static void render(f32 alpha)
+{
     renderer_draw_frame(alpha);
     SDL_GL_SwapWindow(g_window);
 }
 
-/* ── Entry point ───────────────────────────────────────────────────── */
+int main(int argc, char *argv[])
+{
+    (void)argc; (void)argv;
 
-int main(int argc, char *argv[]) {
-    (void)argc;
-    (void)argv;
-
-    if (!init()) {
-        fprintf(stderr, "Fallo la inicializacion\n");
-        shutdown_game();
-        return 1;
-    }
+    if (!init()) { return 1; }
 
     Uint64 last_time   = SDL_GetTicks64();
-    double accumulator = 0.0;
+    f64    accumulator = 0.0;
 
     while (g_running) {
         process_events();
 
         Uint64 now      = SDL_GetTicks64();
-        double frame_ms = (double)(now - last_time);
+        f64    frame_ms = (f64)(now - last_time);
         last_time       = now;
 
-        /* Clampear a 250ms para evitar spiral of death */
+        /* Clampear frame_ms para evitar spiral of death (ej. tras un breakpoint) */
         if (frame_ms > 250.0) { frame_ms = 250.0; }
         accumulator += frame_ms;
 
@@ -238,6 +229,10 @@ int main(int argc, char *argv[]) {
         render((f32)(accumulator / TICK_MS));
     }
 
-    shutdown_game();
+    renderer_shutdown();
+    SDL_GL_DeleteContext(g_gl_ctx);
+    SDL_DestroyWindow(g_window);
+    SDL_Quit();
+
     return 0;
 }

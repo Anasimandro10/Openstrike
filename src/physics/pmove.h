@@ -18,44 +18,49 @@
 
 #include "types.h"
 #include "renderer/math.h"
+#include "collision.h"    /* FloorHit, collision_detectar_suelo; trae map.h transitivamente */
 
-/* Constantes de movimiento exactas CS:GO */
+/* ── Constantes de movimiento — exactas CS:GO ─────────────────────────────── */
 #define SV_GRAVITY        800.0f
 #define SV_MAXVELOCITY   3500.0f
 #define SV_FRICTION         5.5f
 #define SV_STOPSPEED       80.0f
 #define SV_ACCELERATE       5.5f
-#define SV_AIRACCELERATE   12.0f   /* air strafing estilo CS 1.6 */
+#define SV_AIRACCELERATE   12.0f   /* sin clamp post-salto = bunny hop CS 1.6 */
+#define BHOP_MAX_SPEED    320.0f   /* cap XZ en aire — 28% sobre SPEED_RUN    */
 #define SV_STEPSIZE        18.0f
-
 #define SPEED_RUN         250.0f
 #define SPEED_WALK        130.0f
 #define SPEED_DUCK         85.0f
 #define JUMP_IMPULSE  301.993012f
+#define VIEW_HEIGHT_STAND  64.0f   /* altura ojo de pie (unidades Hammer)     */
+#define VIEW_HEIGHT_DUCK   28.0f   /* altura ojo agachado                     */
 
-#define VIEW_HEIGHT_STAND  64.0f
-#define VIEW_HEIGHT_DUCK   28.0f
-
-/* Cap de velocidad horizontal en aire.
-   Con buen bhop mantienes ~320 u/s (ventaja real sobre 250 de correr),
-   pero strafear sin tecnica no acumula velocidad infinitamente.          */
-#define BHOP_MAX_SPEED    320.0f
+/* ── Structs ──────────────────────────────────────────────────────────────── */
 
 typedef struct {
-    Vec3 wish_dir;
+    Vec3 wish_dir;   /* dirección deseada normalizada en plano XZ */
     bool saltar;
     bool agacharse;
     bool caminar;
 } PhysInput;
 
 typedef struct {
-    Vec3 pos;
-    Vec3 vel;
+    Vec3 pos;        /* posición en unidades Hammer  */
+    Vec3 vel;        /* velocidad en unidades/segundo */
     bool en_suelo;
     bool agachado;
     bool caminando;
 } PhysPlayer;
 
+/* ── API pública ──────────────────────────────────────────────────────────── */
+
+/* memset a cero + asigna pos. Llamar una vez al inicio. */
 void phys_player_init(PhysPlayer *p, Vec3 spawn_pos);
-void phys_tick(PhysPlayer *p, PhysInput input, f32 dt);
+
+/* Tick completo de física. Llamar exactamente a 64 Hz (dt = 1/64 = 0.015625).
+ * map se usa para detectar el suelo real — pasar &g_map siempre.             */
+void phys_tick(PhysPlayer *p, PhysInput input, const Map *map, f32 dt);
+
+/* Retorna VIEW_HEIGHT_DUCK si agachado, VIEW_HEIGHT_STAND si de pie. */
 f32  phys_view_height(const PhysPlayer *p);
